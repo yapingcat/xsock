@@ -1,3 +1,6 @@
+#ifndef X_SOCK_H
+#define X_SOCK_H
+
 #include <string>
 #include <unordered_map>
 #include <functional>
@@ -159,6 +162,4 @@ private:
 
 
 
-
-
-
+#endif
