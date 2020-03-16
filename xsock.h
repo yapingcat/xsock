@@ -138,6 +138,7 @@ public:
  	void addEventHandler(xsock::Ptr psock, EventHandler::Ptr handler);	
  	void delEventHandler(xsock::Ptr psock);
 	void addEventCallBack(xsock::Ptr psock,int event,const XEventCB ecb);
+	void unregierEvent(xsock::Ptr psock,int event);
 
 private:
 	void run_poll();
