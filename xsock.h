@@ -132,13 +132,15 @@ public:
 	
 	xloop(const xloop&) = delete;
 	xloop& operator=(const xloop&) = delete;
+
 public:
 	void run();
 	void stop();
  	void addEventHandler(xsock::Ptr psock, EventHandler::Ptr handler);	
- 	void delEventHandler(xsock::Ptr psock);
 	void addEventCallBack(xsock::Ptr psock,int event,const XEventCB ecb);
-	void unregierEvent(xsock::Ptr psock,int event);
+	void unregisterEvent(xsock::Ptr psock,int event);
+	void registerEvent(xsock::Ptr psock,int event);
+	void delEventHandler(xsock::Ptr psock);
 
 private:
 	void run_poll();

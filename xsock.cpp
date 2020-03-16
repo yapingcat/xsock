@@ -436,7 +436,7 @@ void xloop::addEventCallBack(xsock::Ptr psock,int event,const XEventCB ecb)
 	wakeup();
 }
 
-void xloop::unregierEvent(xsock::Ptr psock,int event)
+void xloop::unregisterEvent(xsock::Ptr psock,int event)
 {
 	if(tid_ == std::this_thread::get_id())
 	{
@@ -446,7 +446,19 @@ void xloop::unregierEvent(xsock::Ptr psock,int event)
 		std::lock_guard<std::mutex> guard(mtx_);
 		functors_.push_back([=](){ eventMap_[psock]->disableEvent(event);});
 	}
-	
+}
+
+void xloop::registerEvent(xsock::Ptr psock, int event)
+{
+	if(tid_ == std::this_thread::get_id())
+	{
+		eventMap_[psock]->enableEvent(event);
+	}
+	{
+		std::lock_guard<std::mutex> guard(mtx_);
+		functors_.push_back([=](){ eventMap_[psock]->enableEvent(event);});
+	}
+		
 }
 
 void xloop::run_poll()
