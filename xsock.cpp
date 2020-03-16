@@ -291,15 +291,15 @@ int EventHandler::interest()
 
 void EventHandler::handlerEvent(int event)
 {
-	if(event_ & EV_READ)
+	if(event & EV_READ)
 	{
 		onRecv();
 	}
-	if(event_ & EV_WRITE)
+	if(event & EV_WRITE)
 	{
 		onSend();
 	}
-	if(event_ & EV_ERROR)
+	if(event & EV_ERROR)
 	{
 		onError();
 	}
@@ -396,10 +396,6 @@ void xloop::stop()
 
 void xloop::addEventHandler(xsock::Ptr psock,EventHandler::Ptr handler)
 {
-	if(tid_ == std::this_thread::get_id())
-	{
-		eventMap_[psock] = handler;
-	}
 	{
 		std::lock_guard<std::mutex> guard(mtx_);
 		functors_.push_back([=](){ eventMap_[psock] = handler;});
@@ -409,10 +405,6 @@ void xloop::addEventHandler(xsock::Ptr psock,EventHandler::Ptr handler)
 
 void xloop::delEventHandler(xsock::Ptr psock)
 {
-	if(tid_ == std::this_thread::get_id())
-	{
-		eventMap_.erase(psock);
-	}
 	{
 		std::lock_guard<std::mutex> guard(mtx_);
 		functors_.push_back([=](){ eventMap_.erase(psock);});
@@ -425,10 +417,6 @@ void xloop::addEventCallBack(xsock::Ptr psock,int event,const XEventCB ecb)
 	FuncHandler::Ptr fptr = std::make_shared<FuncHandler>(ecb);
 	fptr->attachHandler(psock);
 	fptr->enableEvent(event);
-	if(tid_ == std::this_thread::get_id())
-	{
-		eventMap_[psock] = fptr;
-	}
 	{
 		std::lock_guard<std::mutex> guard(mtx_);
 		functors_.push_back([=](){ eventMap_[psock] = fptr;});
@@ -523,15 +511,21 @@ void xloop::run_poll()
 		{
 			revents |= EV_ERROR;
 		}
-		sockitem->second->handlerEvent(revents);
+		if(revents != 0)
+		{
+			sockitem->second->handlerEvent(revents);
+		}
 	}
 	
-	std::lock_guard<std::mutex> guard(mtx_);
-	for(auto func : functors_)
+	decltype(functors_) tempfuncs;
+	{
+		std::lock_guard<std::mutex> guard(mtx_);
+		tempfuncs = std::move(functors_);
+	}
+	for(auto func : tempfuncs)
 	{
 		func();
 	}
-	functors_.clear();
 }
 
 void xloop::run_select()

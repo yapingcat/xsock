@@ -1,6 +1,6 @@
 #include "../xsock.h"
 #include <errno.h>
-
+#include <thread>
 int main()
 {
 	auto xs = std::make_shared<xsvrsock>();
@@ -13,6 +13,7 @@ int main()
 	xs->listen();
 	xloop xl;
 	xloop* pxl = &xl;
+	std::thread t1(std::bind(&xloop::run,pxl));
 	xl.addEventCallBack(xs,EV_READ,[pxl](xsock::Ptr psock,int event){
 				std::string ip = "";
 				uint16_t port = 0;
@@ -38,5 +39,6 @@ int main()
 						return;		
 				});
 		});
-	xl.run();
+
+	t1.join();
 }
