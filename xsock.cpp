@@ -45,6 +45,18 @@ int xsocketApi::acceptClient(int server,std::string&ip, uint16_t& port)
     return sc;
 }
 
+int xsocketApi::acceptClient(int server)
+{
+	sockaddr_in sa;
+   	socklen_t len = sizeof(sa);
+	int sc = ::accept(server,(sockaddr*)&sa,&len);
+    if( sc < 0)
+    {
+        return sc;
+    }
+    return sc;
+}
+
 int xsocketApi::listen(int sc,int backlog)
 {
 	return ::listen(sc,backlog);
@@ -97,6 +109,22 @@ int xsocketApi::close(int sc)
 	return ::close(sc);
 }
 
+int xsocketApi::getPeerName(int sc, std::string& ip, uint16_t& port)
+{
+    sockaddr_in sa;
+    socklen_t len = sizeof(sa);
+    int ret = ::getpeername(sc,(sockaddr*)&sa,&len);
+    if(ret != 0)
+    {
+        return ret;
+    }
+
+    char addr[64] = {0};
+    ::inet_ntop(AF_INET,&(sa.sin_addr),addr,63);
+    ip = addr;
+    port = ntohs(sa.sin_port);
+    return ret;
+}
 
 pipe::~pipe()
 {
@@ -170,6 +198,12 @@ xsock::Ptr xsock::accept(std::string& ip, uint16_t& port)
 	return std::make_shared<xsock>(client);
 }
 
+xsock::Ptr xsock::accept()
+{
+	int client = xsocketApi::acceptClient(fd_);
+	return std::make_shared<xsock>(client);
+}
+
 int xsock::close()
 {
 	return xsocketApi::close(fd_);
@@ -232,6 +266,11 @@ int xsock::setSocketOption(int option,int value)
 int xsock::getSocketOption(int option,int &value)
 {
 	return xsocketApi::getSocketOption(fd_,SOL_SOCKET,option,value);
+}
+
+int xsock::getClient(std::string& ip, uint16_t& port)
+{
+    return xsocketApi::getPeerName(fd_,ip,port);
 }
 
 void xsock::init()

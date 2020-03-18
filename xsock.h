@@ -8,7 +8,10 @@
 #include <thread>
 #include <mutex>
 #include <vector>
+#include <stdio.h>
 
+#define xlog(...)  do { fprintf(stdout,__VA_ARGS__); fprintf(stdout,"\n");fflush(stdout);}while(0);
+#define xloge(...)  do { fprintf(stderr,__VA_ARGS__); fprintf(stdout,"\n");fflush(stderr);}while(0);
 
 class xsocketApi
 {
@@ -16,6 +19,7 @@ public:
 	static int createTcpSocket();
 	static int createServerSocket(const std::string& ip, uint16_t port);
 	static int acceptClient(int server,std::string& ip, uint16_t& port);
+	static int acceptClient(int server);
 	static int listen(int sc,int backlog);
 	static int bind(int sc,const std::string& ip, uint16_t port);
 	static int connect(int sc,const std::string& ip,uint16_t port);
@@ -24,6 +28,7 @@ public:
 	static int setSocketOption(int sc,int level,int option,int value);
 	static int getSocketOption(int sc,int level,int option,int& value);
 	static int close(int sc);
+    static int getPeerName(int sc, std::string& ip,uint16_t& port);
 };
 
 enum
@@ -39,7 +44,9 @@ class pipe
 public:
 	pipe() = default;
 	~pipe();
-	
+    pipe(const pipe&) = delete;
+    pipe& operator=(const pipe&) = delete;
+    
 public:
 	int init();
 	int rfd();
@@ -58,7 +65,7 @@ public:
 public:
 	xsock();
 	xsock(int fd);
-	~xsock();
+	virtual ~xsock();
 	xsock(const xsock&) = delete;
 	xsock& operator=(const xsock&) = delete;
 
@@ -67,6 +74,7 @@ public:
 	int bind(const std::string&ip,uint16_t port);
 	int listen(int backlog = 64);
 	xsock::Ptr accept(std::string& ip, uint16_t& port);
+	xsock::Ptr accept();
 	int close();
 	int sendBytes(const std::string& bytes,uint32_t size);
 	int sendBytes(const char* bytes,uint32_t size);
@@ -79,6 +87,7 @@ public:
 	bool isBlock();
 	int setSocketOption(int option,int value);
 	int getSocketOption(int option,int &value);
+    int getClient(std::string& ip,uint16_t& port);
 
 private:
 	void init();
