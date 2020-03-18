@@ -1,6 +1,7 @@
 # xsock
-c++11 network reactor 
-just for learning
+````
+  使用c++11 按照Reactor模式 开发的一个网络库，仅供参考
+````
 
 # build 
   use ./build.sh to build libxsock.a
