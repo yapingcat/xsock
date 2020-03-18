@@ -1,6 +1,7 @@
 # xsock
-c++11 network reactor 
-just for learning
+````
+  使用c++11 按照Reactor模式 开发的一个网络库，仅供参考
+````
 
 # build 
   use ./build.sh to build libxsock.a
@@ -17,6 +18,7 @@ just for learning
   xs->listen();
   xloop xl;
   xloop* pxl = &xl;
+  std::thread t1(std::bind(&xloop::run,pxl));
   xl.addEventCallBack(xs,EV_READ,[pxl](xsock::Ptr psock,int event){
              std::string ip = "";
              uint16_t port = 0;
@@ -42,6 +44,6 @@ just for learning
                            return;
                    });
            });
- xl.run();
+ t1.join();
 
 ```
