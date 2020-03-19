@@ -3,6 +3,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/ioctl.h>
 #include <netinet/tcp.h>
 #include <assert.h>
@@ -24,6 +25,7 @@ int xsocketApi::createTcpSocket()
 int xsocketApi::createServerSocket(const std::string& ip, uint16_t port)
 {
 	int server = createTcpSocket();
+    setBlock(server,0);
 	setReuseOption(server);
 	int ret = bind(server,ip,port);
 	return ret == 0 ? server: -1;
@@ -90,7 +92,10 @@ int xsocketApi::setReuseOption(int sc)
 
 int xsocketApi::setBlock(int sc,int block)
 {
-	return ::ioctl(sc,FIONBIO,&block);
+    int flags = ::fcntl(sc,F_GETFL);
+    flags = flags & ~O_NONBLOCK;
+    if(!block) flags = flags & O_NONBLOCK;
+	return ::fcntl(sc,F_SETFL,flags);
 }
 
 int xsocketApi::setSocketOption(int sc,int level,int option, int value)
@@ -172,8 +177,7 @@ xsock::xsock(int fd)
 
 xsock::~xsock()
 {
-	if(fd_ > 0)
-		xsocketApi::close(fd_);
+    close();
 }
 
 
@@ -206,7 +210,13 @@ xsock::Ptr xsock::accept()
 
 int xsock::close()
 {
-	return xsocketApi::close(fd_);
+    if(fd_ < 0)
+    {
+	    return 0;
+    }
+	int ret = xsocketApi::close(fd_);
+    fd_ = ret == 0 ?invalid_xsock:fd_;
+    return ret;
 }
 
 int xsock::sendBytes(const std::string& bytes,uint32_t size)
@@ -513,22 +523,24 @@ void xloop::run_poll()
 		if(it.second->interest() & EV_ERROR)
 		{
 			pollArray.get()[idx].fd = it.first->fd();
-			pollArray.get()[idx].events |= POLLERR; 
+			pollArray.get()[idx].events |= POLLERR;
 		}
 		idx++;
 	}
+
 	int rc = ::poll(pollArray.get(), idx, 10000);
 	if (rc < 0)
-	{	
+	{
 		return;
 	}
 	
-	if (POLLIN & pollArray.get()[0].revents)
+    if (POLLIN & pollArray.get()[0].revents)
 	{
 		char buf[32] = {0};
 		wakeup_.read(buf,32);
+        rc--;
 	}
-	
+
 	for(int i = 1; i < idx && i - 1 < rc; i++)
 	{
 		auto tmpfd = pollArray.get()[i].fd;
