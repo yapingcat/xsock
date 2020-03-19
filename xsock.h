@@ -61,6 +61,7 @@ class xsock
 {
 public:
 	typedef std::shared_ptr<xsock> Ptr;
+    enum { invalid_xsock = -1};
 
 public:
 	xsock();
