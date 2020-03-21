@@ -7,13 +7,15 @@
   use ./build.sh to build libxsock.a
 
 # build with cmake
+````bash
   mkdir build
   cd  build
   cmake POLLER=POLL ..
   make
+````
 
 # build example
-````
+````bash
   g++ -std=c++11 -DHAVE_POLL server3.cpp   -L../ -lxsock -lpthread
   ./a.out
 ````
