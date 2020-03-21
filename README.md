@@ -3,9 +3,15 @@
   使用c++11 按照Reactor模式 开发的一个网络库，仅供参考
 ````
 
-# build 
+# build
   use ./build.sh to build libxsock.a
- 
+
+# build with cmake
+  mkdir build
+  cd  build
+  cmake POLLER=POLL ..
+  make
+
 # build example
 ````
   g++ -std=c++11 -DHAVE_POLL server3.cpp   -L../ -lxsock -lpthread
