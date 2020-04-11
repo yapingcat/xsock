@@ -581,7 +581,80 @@ void xloop::run_poll()
 
 void xloop::run_select()
 {
+	fd_set rset;
+	fd_set wset;
+	fd_set eset;
+	FD_ZERO(&rset);
+	FD_ZERO(&wset);
+	FD_ZERO(&eset);
+
+	FD_SET(wakeup_.rfd(),&rset);
+	auto compare = [](decltype(eventMap_)::value_type& a,decltype(eventMap_)::value_type& b) { return a.fd() < b.fd(); }
+	auto maxSock = std::max_element(eventMap_.begin(),eventMap_.end(),compare);
+	auto maxFd = std::max(maxSock.first->fd(),wakeup_.rfd());
+	for(auto &it : eventMap_)
+	{
+		if(it.second->interest() & EV_READ)
+		{
+			FD_SET(it.first->fd(),&rset);
+		}
+		if(it.second->interest() & EV_WRITE)
+		{
+			FD_SET(it.first->fd(),&wset);
+		}
+		if(it.second->interest() & EV_ERROR)
+		{
+			FD_SET(it.first->fd(),&eset);
+		}
+	}
 	
+	struct timeval timeout;
+	timeout.tv_sec = 10;
+	timeout.tv_usec = 0;
+	int ready = ::select(maxFd+1,&rset,&wset,&eset,&timeout);
+
+	if(ready < 0)
+	{
+		return ;
+	}
+
+	for(auto it = eventMap_.begin(); it != eventMap_.end() && --ready > 0; it++)
+	{
+		int revents = 0;
+		auto tmpfd = it->first->fd();
+		if(FD_ISSET(tmpfd,&rset))
+		{
+			revents |= EV_READ;
+		}
+		if(FD_ISSET(tmpfd,&wset))
+		{
+			revents |= EV_WRITE;
+		}
+		if(FD_ISSET(tmpfd,&eset))
+		{
+			revents |= EV_ERROR;
+		}
+		if(revents == 0)
+		{
+			continue;
+		}
+		auto sockItem = std::find_if(eventMap_.begin(),eventMap_.end(),[tmpfd](decltype(eventMap_)::value_type v) { return tmpfd == v.first->fd(); });
+		if(sockItem == eventMap_.end())
+		{
+			continue;
+		}
+		sockItem.second->handlerEvent(revents);
+	}
+
+	decltype(functors_) tempfuncs;
+	{
+		std::lock_guard<std::mutex> guard(mtx_);
+		tempfuncs = std::move(functors_);
+	}
+	for(auto func : tempfuncs)
+	{
+		func();
+	}
 }
 
 void xloop::run_epoll()
