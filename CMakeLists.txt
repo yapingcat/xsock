@@ -3,6 +3,7 @@ project(xsock)
 
 add_compile_options(-std=c++11)
 
+set(POLLER Select)
 message(${POLLER})
 if(${POLLER} STREQUAL "POLL")
     add_definitions(-DHAVE_POLL)
@@ -20,5 +21,5 @@ set_target_properties(xsock_shared PROPERTIES OUTPUT_NAME xsock)
 set_target_properties(xsock_static PROPERTIES CLEAN_DIRECT_OUTPUT 1)
 set_target_properties(xsock_shared PROPERTIES CLEAN_DIRECT_OUTPUT 1)
 
-#add_subdirectory(example)
+add_subdirectory(example)
 

@@ -498,6 +498,12 @@ void xloop::registerEvent(xsock::Ptr psock, int event)
 		
 }
 
+#ifdef HAVE_EPOLL
+void xloop::run_epoll()
+{
+	
+}
+#elif HAVE_POLL
 void xloop::run_poll()
 {	
 	std::shared_ptr<pollfd> pollArray(new pollfd[eventMap_.size() + 1](),[](pollfd* pfd){ delete[] pfd;});
@@ -579,6 +585,7 @@ void xloop::run_poll()
 	}
 }
 
+#else
 void xloop::run_select()
 {
 	fd_set rset;
@@ -589,9 +596,9 @@ void xloop::run_select()
 	FD_ZERO(&eset);
 
 	FD_SET(wakeup_.rfd(),&rset);
-	auto compare = [](decltype(eventMap_)::value_type& a,decltype(eventMap_)::value_type& b) { return a.fd() < b.fd(); }
+	auto compare = [](decltype(eventMap_)::value_type& a,decltype(eventMap_)::value_type& b) { return a.first->fd() < b.first->fd(); };
 	auto maxSock = std::max_element(eventMap_.begin(),eventMap_.end(),compare);
-	auto maxFd = std::max(maxSock.first->fd(),wakeup_.rfd());
+	auto maxFd = std::max(maxSock->first->fd(),wakeup_.rfd());
 	for(auto &it : eventMap_)
 	{
 		if(it.second->interest() & EV_READ)
@@ -643,7 +650,7 @@ void xloop::run_select()
 		{
 			continue;
 		}
-		sockItem.second->handlerEvent(revents);
+		sockItem->second->handlerEvent(revents);
 	}
 
 	decltype(functors_) tempfuncs;
@@ -656,11 +663,7 @@ void xloop::run_select()
 		func();
 	}
 }
-
-void xloop::run_epoll()
-{
-	
-}
+#endif
 
 void xloop::wakeup()
 {

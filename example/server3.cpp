@@ -24,7 +24,7 @@ int main()
 						int len = psock->recvBytes(buf,64);
 						if(len == 0 )
 						{
-							ddprintf("close connection; %d\n",psock->sockError());
+							printf("close connection; %d\n",psock->sockError());
 							pxl->delEventHandler(psock);
 							psock->close();
 							return ;
