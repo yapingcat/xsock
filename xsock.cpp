@@ -598,7 +598,7 @@ void xloop::run_select()
 	FD_SET(wakeup_.rfd(),&rset);
 	auto compare = [](decltype(eventMap_)::value_type& a,decltype(eventMap_)::value_type& b) { return a.first->fd() < b.first->fd(); };
 	auto maxSock = std::max_element(eventMap_.begin(),eventMap_.end(),compare);
-	auto maxFd = std::max(maxSock->first->fd(),wakeup_.rfd());
+	auto maxFd = maxSock == eventMap_.end() ? wakeup_.rfd() : std::max(maxSock->first->fd(),wakeup_.rfd());
 	for(auto &it : eventMap_)
 	{
 		if(it.second->interest() & EV_READ)
@@ -619,13 +619,18 @@ void xloop::run_select()
 	timeout.tv_sec = 10;
 	timeout.tv_usec = 0;
 	int ready = ::select(maxFd+1,&rset,&wset,&eset,&timeout);
-
 	if(ready < 0)
 	{
 		return ;
 	}
-
-	for(auto it = eventMap_.begin(); it != eventMap_.end() && --ready > 0; it++)
+    
+    if(FD_ISSET(wakeup_.rfd(),&rset))
+    {
+        char buf[32] = {0};
+        wakeup_.read(buf,32);
+        --ready;
+    }
+	for(auto it = eventMap_.begin(); it != eventMap_.end() && ready-- > 0; it++)
 	{
 		int revents = 0;
 		auto tmpfd = it->first->fd();
