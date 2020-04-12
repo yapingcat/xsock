@@ -141,7 +141,7 @@ class xloop
 {
 public:
 	xloop();
-	~xloop();
+	virtual ~xloop();
 	
 	xloop(const xloop&) = delete;
 	xloop& operator=(const xloop&) = delete;
@@ -149,25 +149,61 @@ public:
 public:
 	void run();
 	void stop();
- 	void addEventHandler(xsock::Ptr psock, EventHandler::Ptr handler);	
-	void addEventCallBack(xsock::Ptr psock,int event,const XEventCB ecb);
-	void unregisterEvent(xsock::Ptr psock,int event);
-	void registerEvent(xsock::Ptr psock,int event);
-	void delEventHandler(xsock::Ptr psock);
+ 	virtual void addEventHandler(xsock::Ptr psock, EventHandler::Ptr handler);	
+	virtual void addEventCallBack(xsock::Ptr psock,int event,const XEventCB ecb);
+	virtual void unregisterEvent(xsock::Ptr psock,int event);
+	virtual void registerEvent(xsock::Ptr psock,int event);
+	virtual void delEventHandler(xsock::Ptr psock);
 
-private:
-	void run_poll();
-	void run_select();
-	void run_epoll();
+protected:
+	virtual void loop();
 	void wakeup();
-private:
 
+protected:
 	std::unordered_map<xsock::Ptr,EventHandler::Ptr> eventMap_;
 	std::vector<std::function<void()>> functors_;
 	std::mutex mtx_;
 	std::thread::id tid_;
 	bool quit_;
-	pipe wakeup_;
+	pipe wakeup_; 
+};
+
+
+class xSelectLoop : public xloop
+{
+public:
+	xSelectLoop() = default;
+	~xSelectLoop() = default;
+
+protected:
+	void loop()  override; 
+
+};
+
+
+class xEpollLoop : public xloop
+{
+public:
+	xEpollLoop();
+	~xEpollLoop();
+
+public:
+	void addEventHandler(xsock::Ptr psock, EventHandler::Ptr handler) override;	
+	void addEventCallBack(xsock::Ptr psock,int event,const XEventCB ecb) override;
+	void unregisterEvent(xsock::Ptr psock,int event) override;
+	void registerEvent(xsock::Ptr psock,int event) override;
+	void delEventHandler(xsock::Ptr psock) override;
+
+protected:
+	void loop() override;
+
+private:
+	int toEPollEvent(int event);
+
+private:
+	int epollfd_ = -1;
+	struct epoll_event;
+	std::unordered_map<int,std::shared_ptr<epoll_event>> epollEventMap_;
 };
 
 

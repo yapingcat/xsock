@@ -9,13 +9,9 @@
 #include <assert.h>
 #include <algorithm>
 #include <unistd.h>
-#ifdef HAVE_EPOLL
 #include <sys/epoll.h>
-#elif HAVE_POLL
 #include <poll.h>
-#else
 #include <sys/select.h>
-#endif
 
 int xsocketApi::createTcpSocket()
 {
@@ -410,7 +406,6 @@ private:
 	XEventCB ecb_;
 };
 
-
 xloop::xloop()
 	:quit_(true)
 {
@@ -427,14 +422,8 @@ void xloop::run()
 	tid_ = std::this_thread::get_id();
 	while(!quit_)
 	{
-#ifdef HAVE_EPOLL
-		run_epoll();
-#elif HAVE_POLL
-		run_poll();
-#else
-		run_select();
-#endif
-	}			
+		loop();
+	}
 }
 
 void xloop::stop()
@@ -477,35 +466,40 @@ void xloop::unregisterEvent(xsock::Ptr psock,int event)
 {
 	if(tid_ == std::this_thread::get_id())
 	{
-		eventMap_[psock]->disableEvent(event);
+		if(eventMap_.find(psock) != eventMap_.end()) 
+			eventMap_[psock]->disableEvent(event);
+		return;
 	}
 	{
 		std::lock_guard<std::mutex> guard(mtx_);
-		functors_.push_back([=](){ eventMap_[psock]->disableEvent(event);});
+		functors_.push_back([=]() { 
+			if(eventMap_.find(psock) != eventMap_.end()) 
+				eventMap_[psock]->disableEvent(event);
+			});
 	}
+	wakeup();
 }
 
 void xloop::registerEvent(xsock::Ptr psock, int event)
 {
 	if(tid_ == std::this_thread::get_id())
 	{
-		eventMap_[psock]->enableEvent(event);
+		if(eventMap_.find(psock) != eventMap_.end()) 
+			eventMap_[psock]->enableEvent(event);
+		return;
 	}
 	{
 		std::lock_guard<std::mutex> guard(mtx_);
-		functors_.push_back([=](){ eventMap_[psock]->enableEvent(event);});
+		functors_.push_back([=](){
+			if(eventMap_.find(psock) != eventMap_.end()) 
+				eventMap_[psock]->enableEvent(event);
+			});
 	}
-		
+	wakeup();
 }
 
-#ifdef HAVE_EPOLL
-void xloop::run_epoll()
+void xloop::loop()
 {
-	
-}
-#elif HAVE_POLL
-void xloop::run_poll()
-{	
 	std::shared_ptr<pollfd> pollArray(new pollfd[eventMap_.size() + 1](),[](pollfd* pfd){ delete[] pfd;});
 	int idx = 0;
 	pollArray.get()[idx].fd = wakeup_.rfd();
@@ -585,8 +579,50 @@ void xloop::run_poll()
 	}
 }
 
-#else
-void xloop::run_select()
+void xloop::run_epoll()
+{
+	int maxEvents = eventMap_.size() + 1;
+	std::shared_ptr<epoll_event> epollEvents(new epoll_event[maxEvents](),[](epoll_event* pevents){ delete[] pevents;});
+	int idx = 0;
+	
+	epollEvents.get()[idx].data.fd = wakeup_.rfd();
+	epollEvents.get()[idx++].events = EPOLLIN;
+	for(auto &it : eventMap_)
+	{
+		if(!(it.second->interest() & EV_ALL))
+		{
+			continue;
+		}
+		if(it.second->interest() & EV_READ)
+		{
+			pollArray.get()[idx].data.fd = it.first->fd();
+			pollArray.get()[idx].events |= EPOLLIN; 
+		}
+		if(it.second->interest() & EV_WRITE)
+		{
+			pollArray.get()[idx].data.fd = it.first->fd();
+			pollArray.get()[idx].events |= EPOLLOUT; 
+		}
+		if(it.second->interest() & EV_ERROR)
+		{
+			pollArray.get()[idx].data.fd = it.first->fd();
+			pollArray.get()[idx].events |= EPOLLERR;
+		}
+		idx++;
+	}
+
+
+
+}
+
+
+void xloop::wakeup()
+{
+	wakeup_.write("wakeup man",10);
+}
+
+
+void xSelectLoop::loop()
 {
 	fd_set rset;
 	fd_set wset;
@@ -668,11 +704,207 @@ void xloop::run_select()
 		func();
 	}
 }
-#endif
 
-void xloop::wakeup()
+xEpollLoop::xEpollLoop()
 {
-	wakeup_.write("wakeup man",10);
+	epollfd_ = epoll_create(10000);
+	assert(epollfd_ != -1);
+	auto ev = std::make_shared<epoll_event>();
+	epoll_ctl(epollfd_,EPOLL_CTL_ADD,wakeup_,rfd(),ev.get());
 }
 
+xEpollLoop::~xEpollLoop()
+{
+	epoll_ctl(epollfd_,EPOLL_CTL_DEL,wakeup_,rfd())
+	if(epollfd_ != -1)
+	{
+		xsocketApi::close(epollfd_);
+	}
+}
+
+
+int xEpollLoop::toEPollEvent(int event)
+{
+	int flag = 0;
+	if(event& EV_READ)
+	{
+		flag |= EPOLLIN;
+	}
+	if(event & EV_WRITE)
+	{
+		flag |= EPOLLOUT;
+	}
+	if(event & EV_ERROR)
+	{
+		flag |= EPOLLERR;
+	}
+	return flag;
+}
+
+void xEpollLoop::addEventHandler(xsock::Ptr psock, EventHandler::Ptr handler)
+{
+	{
+		std::lock_guard<std::mutex> guard(mtx_);
+		functors_.push_back([=](){
+			if(!psock || !hander)
+			{
+				return;
+			}
+
+			int flag = toEPollEvent(handler->interest());
+			if(eventMap_.find(psock) == eventMap_.end())
+			{
+				auto ev = std::make_shared<epoll_event>();
+				ev.data.fd = psock->fd();
+				ev.events = flag;
+				int r = epoll_ctl(epollfd_,EPOLL_CTL_ADD,psock->fd(),ev.get());
+				if(r < 0)
+				{
+					return; //TODO
+				}
+				eventMap_[psock] = handler;
+				epollEventMap_[psock->fd()] = ev;
+			}	
+			else
+			{
+				epollEventMap_[psock->fd()]->events = flag;
+				int r = epoll_ctl(epollfd_,EPOLL_CTL_MOD,psock->fd(),epollEventMap_[psock->fd()].get());
+				if(r < 0)
+				{
+					return; //TODO
+				}
+			});
+	}
+	wakeup();
+}
+
+void xEpollLoop::addEventCallBack(xsock::Ptr psock,int event,const XEventCB ecb)
+{
+	FuncHandler::Ptr fptr = std::make_shared<FuncHandler>(ecb);
+	fptr->attachHandler(psock);
+	addEventHandler(psock,fptr);
+}
+
+void xEpollLoop::unregisterEvent(xsock::Ptr psock,int event)
+{
+	auto modEvent = [=](){
+		if(eventMap_.find(psock) == eventMap_.end())
+		{
+			return;
+		}
+		int flag = toEPollEvent(handler->interest() & ~event);
+		epollEventMap_[psock->fd()]->events = flag;
+		int r = epoll_ctl(epollfd_,EPOLL_CTL_MOD,psock->fd(),epollEventMap_[psock->fd()].get());
+		if(r < 0)
+		{
+			return;
+		}
+		eventMap_[psock]->disableEvent(event);
+	};
+	if(tid_ == std::this_thread::get_id())
+	{
+		modEvent();
+	}
+	{
+		std::lock_guard<std::mutex> guard(mtx_);
+		functors_.push_back(modEvent);
+	}
+	wakeup();
+}
+
+void xEpollLoop::registerEvent(xsock::Ptr psock,int event)
+{
+	auto modEvent = [=](){
+		if(eventMap_.find(psock) == eventMap_.end())
+		{
+			return;
+		}
+		int flag = toEPollEvent(handler->interest() | event);
+		epollEventMap_[psock->fd()]->events = flag;
+		int r = epoll_ctl(epollfd_,EPOLL_CTL_MOD,psock->fd(),epollEventMap_[psock->fd()].get());
+		if(r < 0)
+		{
+			return;
+		}
+		eventMap_[psock]->enableEvent(event);
+	};
+	if(tid_ == std::this_thread::get_id())
+	{
+		modEvent();
+	}
+	{
+		std::lock_guard<std::mutex> guard(mtx_);
+		functors_.push_back(modEvent);
+	}
+	wakeup();
+}
+
+void xEpollLoop::delEventHandler(xsock::Ptr psock)
+{
+	{
+		std::lock_guard<std::mutex> guard(mtx_);
+		functors_.push_back([=](){ 
+			if(eventMap_.find(psock) == eventMap_.end())
+				return;
+			
+			int r = epoll_ctl(epollfd_,EPOLL_CTL_DEL,psock->fd(),epollEventMap_[psock->fd()].get());
+			if(r < 0)
+			{
+				return;
+			}
+			eventMap_.erase(psock);
+			epollEventMap_.erase(psock->fd());
+		});
+	}
+	wakeup();
+}
+
+void xEpollLoop::loop()
+{
+	std::shared_ptr<epoll_event> events(new epoll_event[epollEventMap_.size()],[](epoll_event* ptr){delete[] ptr;})
+	int nready = epoll_wait(epollfd, events.get(), epollEventMap_.size(), 10000);
+	if(nready <= 0)
+	{
+		return; //TODO
+	}
+
+	for(int i; i < nready; i++)
+	{
+		if(events[i].data.fd == wakeup_.rfd())
+		{
+			char buf[32] = {0};
+        	wakeup_.read(buf,32);
+		}
+		int revents = 0;
+		if(events[i].events & EPOLLIN)
+		{
+			revents |= EV_READ;
+		}
+		if(events[i].events & EPOLLOUT)
+		{
+			revents |= EV_WRITE;
+		}
+		if(events[i].events & EPOLLERR)
+		{
+			revents |= EV_ERROR;
+		}
+		int tmpfd = events[i].data.fd;
+		auto sockItem = std::find_if(eventMap_.begin(),eventMap_.end(),[tmpfd](decltype(eventMap_)::value_type v) { return tmpfd == v.first->fd(); });
+		if(sockItem == eventMap_.end())
+		{
+			continue;
+		}
+		sockItem->second->handlerEvent(revents);
+	}
+
+	decltype(functors_) tempfuncs;
+	{
+		std::lock_guard<std::mutex> guard(mtx_);
+		tempfuncs = std::move(functors_);
+	}
+	for(auto func : tempfuncs)
+	{
+		func();
+	}
+}
 
