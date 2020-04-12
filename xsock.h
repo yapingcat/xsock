@@ -181,6 +181,7 @@ protected:
 };
 
 
+struct epoll_event;
 class xEpollLoop : public xloop
 {
 public:
@@ -202,7 +203,6 @@ private:
 
 private:
 	int epollfd_ = -1;
-	struct epoll_event;
 	std::unordered_map<int,std::shared_ptr<epoll_event>> epollEventMap_;
 };
 

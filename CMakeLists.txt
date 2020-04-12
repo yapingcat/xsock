@@ -3,12 +3,6 @@ project(xsock)
 
 add_compile_options(-std=c++11)
 
-set(POLLER Select)
-message(${POLLER})
-if(${POLLER} STREQUAL "POLL")
-    add_definitions(-DHAVE_POLL)
-endif()
-
 set(HEADER_FILE xsock.h)
 set(SOURCE_FILE xsock.cpp)
 
