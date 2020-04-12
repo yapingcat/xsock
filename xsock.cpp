@@ -579,43 +579,6 @@ void xloop::loop()
 	}
 }
 
-void xloop::run_epoll()
-{
-	int maxEvents = eventMap_.size() + 1;
-	std::shared_ptr<epoll_event> epollEvents(new epoll_event[maxEvents](),[](epoll_event* pevents){ delete[] pevents;});
-	int idx = 0;
-	
-	epollEvents.get()[idx].data.fd = wakeup_.rfd();
-	epollEvents.get()[idx++].events = EPOLLIN;
-	for(auto &it : eventMap_)
-	{
-		if(!(it.second->interest() & EV_ALL))
-		{
-			continue;
-		}
-		if(it.second->interest() & EV_READ)
-		{
-			pollArray.get()[idx].data.fd = it.first->fd();
-			pollArray.get()[idx].events |= EPOLLIN; 
-		}
-		if(it.second->interest() & EV_WRITE)
-		{
-			pollArray.get()[idx].data.fd = it.first->fd();
-			pollArray.get()[idx].events |= EPOLLOUT; 
-		}
-		if(it.second->interest() & EV_ERROR)
-		{
-			pollArray.get()[idx].data.fd = it.first->fd();
-			pollArray.get()[idx].events |= EPOLLERR;
-		}
-		idx++;
-	}
-
-
-
-}
-
-
 void xloop::wakeup()
 {
 	wakeup_.write("wakeup man",10);
